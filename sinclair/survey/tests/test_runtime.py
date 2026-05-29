@@ -46,7 +46,8 @@ from sinclair.survey import (
 )
 from sinclair.survey.context import select_columns
 import sinclair.survey.runtime as survey_runtime
-from sinclair.survey.validators import validate_evidence
+from sinclair.survey._helpers import extract_response_previews
+from sinclair.survey.validators import canonicalize_evidence_reason, validate_evidence
 
 
 REAL_A = Path("examples/data/20557/20557.csv")
@@ -603,39 +604,62 @@ def test_validate_report_hydrates_canonical_datum_and_evidence_ids(
     assert first_citation.target.evidence_id == first_datum.evidence_id
 
 
-def test_validate_evidence_accepts_product_facing_reason(
-    report_fixture: ReportFixture,
-):
+def test_validate_evidence_accepts_product_facing_reason():
+    df = pd.DataFrame({"Q2": ["YouTube", "YouTube", "Instagram", None]})
     evidence = Evidence(
-        base_rule=f"df[{report_fixture.platform_col!r}] == 'YouTube'",
-        rule=f"df[{report_fixture.platform_col!r}] == 'YouTube'",
+        base_rule="df['Q2'] == 'YouTube'",
+        rule="df['Q2'] == 'YouTube'",
         reason="identifica preferência principal",
         match_label="YouTube",
-        source_column=report_fixture.platform_col,
-        question_id=report_fixture.platform_col,
+        source_column="Q2",
+        question_id="Q2",
     )
 
     with pytest.raises(
         ValueError,
-        match="evidence.reason must mention the source question or column",
+        match="evidence.reason must describe the observable response criterion in human language",
     ):
-        validate_evidence(evidence, report_fixture.df)
+        validate_evidence(evidence, df)
 
 
-def test_validate_evidence_accepts_user_facing_reason(
-    report_fixture: ReportFixture,
-):
+def test_validate_evidence_accepts_user_facing_reason():
+    df = pd.DataFrame({"Q2": ["YouTube", "YouTube", "Instagram", None]})
     evidence = Evidence(
-        base_rule=f"df[{report_fixture.platform_col!r}].notna() & df[{report_fixture.platform_col!r}].astype(str).str.strip().ne('')",
-        rule=f"df[{report_fixture.platform_col!r}] == 'YouTube'",
-        reason=f"Ao falar do canal preferido em {report_fixture.platform_col}, menciona YouTube.",
-        source_column=report_fixture.platform_col,
-        question_id=report_fixture.platform_col,
+        base_rule="df['Q2'].notna() & df['Q2'].astype(str).str.strip().ne('')",
+        rule="df['Q2'] == 'YouTube'",
+        reason="Quando fala do canal preferido, cita YouTube.",
+        source_column="Q2",
+        question_id="Q2",
     )
 
-    validate_evidence(evidence, report_fixture.df)
+    validate_evidence(evidence, df)
 
-    assert evidence.reason.startswith("Ao falar do canal preferido")
+    assert evidence.reason.startswith("Quando fala do canal preferido")
+
+
+def test_validate_evidence_accepts_human_reason_without_literal_match_label():
+    df = pd.DataFrame(
+        {
+            "Q19": [
+                "hidratante corporal",
+                "sabonete em barra",
+                "hidratante e óleo",
+                None,
+            ]
+        }
+    )
+    evidence = Evidence(
+        base_rule="df['Q19'].notna() & df['Q19'].astype(str).str.strip().ne('')",
+        rule="df['Q19'].astype(str).str.contains('hidrat', case=False, regex=False, na=False)",
+        reason="Quando fala de cuidados com o corpo, cita hidratantes e itens de cuidado corporal.",
+        source_column="Q19",
+        match_label="hidrat",
+        question_id="Q19",
+    )
+
+    validate_evidence(evidence, df)
+
+    assert evidence.reason.endswith("cuidado corporal.")
 
 
 def test_validate_report_replaces_model_supplied_datum_ids_with_canonical_ones(
@@ -1155,6 +1179,123 @@ def test_store_canonicalizes_legacy_evidence_reason_before_validation():
     assert record.evidence.reason == "Ao responder q1, menciona Nubank."
 
 
+def test_canonicalize_evidence_reason_preserves_legacy_human_text_without_label():
+    evidence = Evidence(
+        base_rule="df['q4'].notna()",
+        rule="df['q4'].notna()",
+        reason="Conta usada como caixa operacional para entradas e saídas rotineiras.",
+        source_column="q4",
+        question_id="Q4",
+    )
+
+    canonical = canonicalize_evidence_reason(evidence)
+
+    assert canonical.reason == (
+        "Conta usada como caixa operacional para entradas e saídas rotineiras."
+    )
+
+
+def test_frontend_evidence_page_omits_blank_previews():
+    df = pd.DataFrame(
+        {
+            "id": ["1", "2", "3"],
+            "Q1": ["YouTube", "YouTube", "Instagram"],
+        }
+    )
+    identity = SurveyIdentityPolicy(respondent_id_column="id")
+    store = SurveyArtifactStore(identity=identity)
+    evidence = Evidence(
+        base_rule="df['Q1'].notna()",
+        rule="df['Q1'] == 'YouTube'",
+        reason="Ao responder Q1, menciona YouTube.",
+        source_column="Q1",
+        match_label="YouTube",
+        question_id="Q1",
+    )
+    evidence_id = store.save_evidence(evidence, df, scope="question:Q1")
+    report = Report(
+        markdown="## Evidencia\n\nO canal dominante aparece neste trecho de referencia e o texto e longo o bastante para hidratar a saida.",
+        findings=[],
+        charts=[],
+        citations=[
+            Citation(
+                citation_id="ct_1",
+                anchor_text="trecho de referencia",
+                target=CitationTarget(
+                    kind="response_set",
+                    nr_questao="Q1",
+                    evidence_id=evidence_id,
+                ),
+            )
+        ],
+    )
+    bundle = hydrate_report_for_frontend(report, store)
+    ref_id = next(iter(bundle.references))
+
+    record = store.get_evidence(evidence_id)
+    assert record is not None
+    mutated = record.model_copy(
+        update={"preview": [record.preview[0], "", *record.preview[2:]]}
+    )
+    store._cache.set("evidence", evidence_id, mutated.model_dump(mode="json"))
+
+    controller = SurveyFrontendController(
+        store=store,
+        reports={"question:Q1": report},
+    )
+    page = controller.get_evidence_page(
+        "question:Q1",
+        ref_id,
+    )
+
+    assert page.items
+    assert all(str(item.preview or "").strip() for item in page.items)
+    assert page.total_refs == len(page.items)
+
+
+def test_extract_response_previews_preserves_full_open_text_response():
+    df = pd.DataFrame(
+        {
+            "Q37_SNTS": [
+                "Quando descreve a compra por impulso, menciona promoção e desconto.",
+                "Preço alto.",
+            ]
+        }
+    )
+    mask = pd.Series([True, False])
+    evidence = Evidence(
+        base_rule="df['Q37_SNTS'].notna()",
+        rule="df['Q37_SNTS'].astype(str).str.contains('promo', case=False, regex=False, na=False)",
+        reason="Quando descreve a compra por impulso, menciona promoção e desconto.",
+        source_column="Q37_SNTS",
+        match_label="promo",
+        question_id="Q37_SNTS",
+    )
+
+    previews = extract_response_previews(df, mask, evidence)
+
+    assert previews == [
+        "Quando descreve a compra por impulso, menciona promoção e desconto."
+    ]
+
+
+def test_extract_response_previews_keeps_only_matched_multi_value_option():
+    df = pd.DataFrame({"Q10": ["Avon, Natura, XPTO", "Natura"]})
+    mask = pd.Series([True, False])
+    evidence = Evidence(
+        base_rule="df['Q10'].notna()",
+        rule="df['Q10'].astype(str).str.contains('Avon', case=False, regex=False, na=False)",
+        reason="Quando lista as marcas em estoque, cita Avon.",
+        source_column="Q10",
+        match_label="Avon",
+        question_id="Q10",
+    )
+
+    previews = extract_response_previews(df, mask, evidence)
+
+    assert previews == ["Avon"]
+
+
 def test_store_semantic_search_falls_back_to_lexical(
     report_fixture: ReportFixture,
 ):
@@ -1293,7 +1434,7 @@ def test_toolkit_get_final_chart_numbers_freezes_exact_percentages(
     assert payload["chart"]["data"][0]["evidence"]["match_label"] == "Sim, com certeza"
     assert (
         payload["chart"]["data"][0]["evidence"]["reason"]
-        == f"Ao responder {report_fixture.recommendation_col}, menciona Sim, com certeza."
+        == "Maximum recommendation certainty."
     )
 
 
@@ -1324,7 +1465,7 @@ def test_toolkit_get_final_chart_numbers_accepts_mentions_shorthand(
     assert payload["chart"]["data"][0]["evidence"]["match_label"] == "YouTube"
     assert (
         payload["chart"]["data"][0]["evidence"]["reason"]
-        == f"Ao responder {report_fixture.platform_col}, menciona YouTube."
+        == "Quando fala do canal preferido, cita YouTube."
     )
 
 

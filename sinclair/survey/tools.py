@@ -15,7 +15,7 @@ from ._helpers import eval_mask
 from .config import SurveyIdentityPolicy
 from .models import Evidence
 from .provenance import normalize_chart_slug, stable_evidence_id
-from .validators import canonicalize_evidence_reason, validate_evidence
+from .validators import validate_evidence
 
 
 class IntentInput(BaseModel):
@@ -39,7 +39,7 @@ class PublishableDatumInput(BaseModel):
         description="Optional denominator rule. Leave empty to use non-empty answers from the same question.",
     )
     reason: str = Field(
-        description="Observable matching criterion, not an editorial takeaway. Example: 'Ao responder Q2, menciona Nubank.'"
+        description="Short human-readable criterion shown in the evidence modal. Describe what the respondent actually says, not the business takeaway, not the bucket name, and not the question code. Good: 'Quando fala do banco principal, cita Nubank.' or 'Quando descreve a compra por impulso, menciona promoção e desconto.' Bad: 'Marca mais recorrente na carteira atual.' or 'Entra no recorte observado.' or 'Ao responder Q37_SNTS, menciona promo.'"
     )
 
 
@@ -148,7 +148,6 @@ class SurveyToolKit:
                     match_label=match_label,
                     question_id=question_id,
                 )
-                evidence = canonicalize_evidence_reason(evidence)
                 try:
                     validate_evidence(evidence, self.df)
                 except ValueError as exc:
@@ -220,6 +219,6 @@ class SurveyToolKit:
                 get_final_chart_numbers,
                 name="get_final_chart_numbers",
                 args_schema=PublishableChartArgs,
-                description="Freeze one publishable bar chart for a single question scope before markdown publication. `mentions(pattern)` is accepted as shorthand for text matching.",
+                description="Freeze one publishable bar chart for a single question scope before markdown publication. `mentions(pattern)` is accepted as shorthand for text matching. The `reason` for each datum must be one short human sentence describing the observable criterion shown in the evidence modal.",
             ),
         ]

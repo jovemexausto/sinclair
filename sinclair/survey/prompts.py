@@ -204,6 +204,10 @@ Comportamento de execução:
 - Prefira expressões pandas simples e estáveis. Para volumes, use `df.shape[0]`; para tamanho de texto, use `.str.len()`; para texto, prefira `.str.contains(...)` com uma regex curta e clara
 - Evite regras longas, frágeis ou muito aninhadas quando uma condição direta resolve o mesmo ponto
 - Em `get_final_chart_numbers`, deixe `base_rule` vazio por padrão. Só preencha quando tiver certeza de que ele é mais amplo que o `rule`
+- No `reason` de cada item do `get_final_chart_numbers`, escreva uma frase curta em linguagem humana explicando o critério observável que aparece na lista de evidências
+- Escreva o `reason` como o respondente fala ou descreve algo, e nunca como resumo executivo, nome de bucket ou código de pergunta
+- Bons exemplos de `reason`: `Quando fala do banco principal, cita Nubank.`; `Quando descreve a compra por impulso, menciona promoção e desconto.`; `Quando fala de cuidados com o corpo, cita hidratantes.`
+- Maus exemplos de `reason`: `Marca mais recorrente na carteira atual.`; `Entra no recorte observado.`; `Bucket principal da pergunta.`; `Ao responder Q37_SNTS, menciona promo.`
 - Para buckets negativos ou exclusivos, nunca use `não` isolado como regra. Use uma frase explícita de negação e, quando fizer sentido, adicione exclusões para remover ruído
 - Busque os números finais com `get_final_chart_numbers` antes de colocá-los no texto
 - Só entregue quando markdown, charts e citations estiverem todos prontos

@@ -114,16 +114,12 @@ class SurveyFrontendController:
             raise KeyError(f"unknown ref id for {report_key}: {ref_id}")
         return reference
 
-    def get_provenance(
-        self, report_key: str, ref_id: str
-    ) -> FrontendProvenance:
+    def get_provenance(self, report_key: str, ref_id: str) -> FrontendProvenance:
         bundle = self.render_report(report_key)
         reference = self.get_reference(report_key, ref_id)
         evidence = None
         if reference.evidence_id is not None:
-            record = _require_evidence_record(
-                reference.evidence_id, self.store
-            )
+            record = _require_evidence_record(reference.evidence_id, self.store)
             evidence = {
                 "evidence_id": record.evidence_id,
                 "nr_questao": record.evidence.question_id,
@@ -160,9 +156,20 @@ class SurveyFrontendController:
         reference = self.get_reference(report_key, ref_id)
         evidence_id = _resolve_evidence_id_from_reference(reference)
         record = _require_evidence_record(evidence_id, self.store)
-        page_refs = record.refs[offset : offset + limit]
-        page_response_refs = record.response_refs[offset : offset + limit]
-        page_preview = record.preview[offset : offset + limit]
+        visible_items = [
+            (ref, response_ref, preview)
+            for ref, response_ref, preview in zip(
+                record.refs,
+                record.response_refs,
+                record.preview,
+                strict=False,
+            )
+            if str(preview or "").strip()
+        ]
+        page_slice = visible_items[offset : offset + limit]
+        page_refs = [ref for ref, _, _ in page_slice]
+        page_response_refs = [response_ref for _, response_ref, _ in page_slice]
+        page_preview = [preview for _, _, preview in page_slice]
         return FrontendEvidencePage(
             ref_id=ref_id,
             evidence_id=evidence_id,
@@ -172,7 +179,7 @@ class SurveyFrontendController:
             match_count=record.match_count,
             base_count=record.base_count,
             value_pct=record.value_pct,
-            total_refs=len(record.refs),
+            total_refs=len(visible_items),
             offset=offset,
             limit=limit,
             refs=page_refs,
@@ -181,12 +188,8 @@ class SurveyFrontendController:
             items=[
                 FrontendEvidencePage.Item(
                     position=offset + index + 1,
-                    respondent_id=response_ref.respondent_id
-                    if response_ref
-                    else None,
-                    preview=page_preview[index]
-                    if index < len(page_preview)
-                    else None,
+                    respondent_id=response_ref.respondent_id if response_ref else None,
+                    preview=page_preview[index] if index < len(page_preview) else None,
                     response_ref=response_ref,
                 )
                 for index, response_ref in enumerate(page_response_refs)
@@ -214,9 +217,7 @@ def hydrate_report_for_frontend(
             continue
         markdown = markdown.replace(
             f"[[chart:{slug}]]",
-            "```chart\n"
-            + json.dumps(block.payload, ensure_ascii=False)
-            + "\n```",
+            "```chart\n" + json.dumps(block.payload, ensure_ascii=False) + "\n```",
         )
     return FrontendRenderBundle(
         markdown=markdown,
@@ -235,9 +236,7 @@ def _hydrate_markdown_links(
     replacements: list[tuple[int, int, str]] = []
     for citation in report.citations:
         ref_id = _line_binding_ref(citation, store, references)
-        marker_span = find_citation_marker_span_optional(
-            markdown, citation.citation_id
-        )
+        marker_span = find_citation_marker_span_optional(markdown, citation.citation_id)
         if marker_span is not None:
             citation_replacements = _replace_marker_with_link(
                 markdown, citation, ref_id, marker_span, percentages
@@ -506,15 +505,11 @@ def _chart_base(chart: Chart, store: SurveyArtifactStore) -> int | None:
             return _require_evidence_record(evidence_id, store).base_count
         for series in datum.series:
             if series.evidence_id:
-                return _require_evidence_record(
-                    series.evidence_id, store
-                ).base_count
+                return _require_evidence_record(series.evidence_id, store).base_count
     return None
 
 
-def _require_evidence_record(
-    evidence_id: str | None, store: SurveyArtifactStore
-):
+def _require_evidence_record(evidence_id: str | None, store: SurveyArtifactStore):
     if evidence_id is None:
         raise ValueError("missing evidence_id for frontend hydration")
     record = store.get_evidence(evidence_id)
@@ -577,9 +572,7 @@ def _resolve_datum_payload(
     if datum_id is None:
         return None, None, None
     for chart_block in bundle.chart_blocks:
-        datum = _find_datum_payload(
-            chart_block.payload.get("data", []), datum_id
-        )
+        datum = _find_datum_payload(chart_block.payload.get("data", []), datum_id)
         if datum is not None:
             return chart_block.slug, chart_block.payload.get("title"), datum
     return None, None, None
@@ -611,8 +604,7 @@ def _percentage_span_before_marker(
     matches = [
         (start, end)
         for _, start, end in percentages
-        if line_start <= start < marker_start <= line_end
-        and end <= marker_start
+        if line_start <= start < marker_start <= line_end and end <= marker_start
     ]
     if not matches:
         return None, None
@@ -630,10 +622,7 @@ def _percentage_link_span(
         end = pct_end + len(marker)
         if start < 0 or end > marker_start:
             continue
-        if (
-            markdown[start:pct_start] == marker
-            and markdown[pct_end:end] == marker
-        ):
+        if markdown[start:pct_start] == marker and markdown[pct_end:end] == marker:
             return start, end
     return pct_start, pct_end
 

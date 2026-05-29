@@ -67,10 +67,7 @@ def extract_response_refs(
 def extract_preview(
     df: pd.DataFrame, mask: pd.Series, evidence: Evidence, limit: int = 8
 ) -> list[str]:
-    if (
-        evidence.source_column is None
-        or evidence.source_column not in df.columns
-    ):
+    if evidence.source_column is None or evidence.source_column not in df.columns:
         return []
     preview: list[str] = []
     for raw in df.loc[mask, evidence.source_column].tolist():
@@ -85,10 +82,7 @@ def extract_response_previews(
     mask: pd.Series,
     evidence: Evidence,
 ) -> list[str]:
-    if (
-        evidence.source_column is None
-        or evidence.source_column not in df.columns
-    ):
+    if evidence.source_column is None or evidence.source_column not in df.columns:
         return ["" for _ in df.index[mask].tolist()]
 
     previews: list[str] = []
@@ -96,22 +90,55 @@ def extract_response_previews(
         if raw is None or (isinstance(raw, float) and pd.isna(raw)):
             previews.append("")
             continue
-        if evidence.match_label is not None:
-            matched = render_match(raw, evidence.match_label)
+        multi_values = extract_multi_value_preview(raw)
+        if evidence.match_label is not None and multi_values is not None:
+            matched = [
+                value
+                for value in multi_values
+                if normalize_token(value) == normalize_token(evidence.match_label)
+            ]
             previews.append(
                 "; ".join(item for item in matched if item.strip())
+                or "; ".join(item for item in multi_values if item.strip())
             )
             continue
-        if isinstance(raw, list):
+        if multi_values is not None:
             previews.append(
                 "; ".join(
-                    str(value).strip() for value in raw if str(value).strip()
+                    str(value).strip() for value in multi_values if str(value).strip()
                 )
             )
             continue
         text = str(raw).strip()
         previews.append(text)
     return previews
+
+
+def extract_multi_value_preview(raw: Any) -> list[str] | None:
+    if isinstance(raw, list):
+        values = [str(value).strip() for value in raw if str(value).strip()]
+        return values or None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if text.startswith("[") and text.endswith("]"):
+        try:
+            parsed = ast.literal_eval(text)
+        except (SyntaxError, ValueError):
+            parsed = None
+        if isinstance(parsed, list):
+            values = [str(value).strip() for value in parsed if str(value).strip()]
+            return values or None
+    if any(separator in text for separator in [";", "|"]):
+        values = [part.strip() for part in re.split(r"[;|]", text) if part.strip()]
+        return values or None
+    if "," in text:
+        values = [part.strip() for part in text.split(",") if part.strip()]
+        if values and all(
+            len(value) <= 40 and len(value.split()) <= 5 for value in values
+        ):
+            return values
+    return None
 
 
 def render_match(raw: Any, match_label: str | None) -> list[str]:
@@ -122,9 +149,7 @@ def render_match(raw: Any, match_label: str | None) -> list[str]:
         return [text] if text else []
     normalized_label = normalize_token(match_label)
     values = coerce_multi_values(raw)
-    matched = [
-        value for value in values if normalize_token(value) == normalized_label
-    ]
+    matched = [value for value in values if normalize_token(value) == normalized_label]
     if matched:
         return matched
     text = str(raw).strip()
@@ -145,13 +170,9 @@ def coerce_multi_values(raw: Any) -> list[str]:
         except (SyntaxError, ValueError):
             parsed = None
         if isinstance(parsed, list):
-            return [
-                str(value).strip() for value in parsed if str(value).strip()
-            ]
+            return [str(value).strip() for value in parsed if str(value).strip()]
     if any(separator in text for separator in [";", ",", "|"]):
-        cleaned = [
-            part.strip() for part in re.split(r"[;,|]", text) if part.strip()
-        ]
+        cleaned = [part.strip() for part in re.split(r"[;,|]", text) if part.strip()]
         if cleaned:
             return cleaned
     return [text]
@@ -198,9 +219,7 @@ def referenced_df_columns(expr: str) -> set[str]:
         if not isinstance(node.value, ast.Name) or node.value.id != "df":
             continue
         slice_node = node.slice
-        if isinstance(slice_node, ast.Constant) and isinstance(
-            slice_node.value, str
-        ):
+        if isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
             columns.add(slice_node.value)
     return columns
 
