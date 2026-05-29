@@ -22,7 +22,7 @@ from .config import SurveyIdentityPolicy
 from .embeddings import EmbeddingBackend
 from .models import Evidence, EvidenceRecord, FindingRecord, Report
 from .provenance import stable_evidence_id
-from .validators import validate_evidence
+from .validators import canonicalize_evidence_reason, validate_evidence
 
 
 class CacheBackend(ABC):
@@ -86,9 +86,7 @@ class SurveyArtifactStore:
             self.save_evidence(evidence, df, scope=scope)
         for idx, finding in enumerate(report.findings):
             finding_id = self._finding_id(scope, idx, finding.claim)
-            linked_ids = [
-                self._evidence_id(evidence) for evidence in finding.evidences
-            ]
+            linked_ids = [self._evidence_id(evidence) for evidence in finding.evidences]
             record = FindingRecord(
                 finding_id=finding_id,
                 scope=scope,
@@ -97,21 +95,16 @@ class SurveyArtifactStore:
                 confidence=finding.confidence,
                 evidence_ids=linked_ids,
             )
-            self._cache.set(
-                "findings", finding_id, record.model_dump(mode="json")
-            )
+            self._cache.set("findings", finding_id, record.model_dump(mode="json"))
             self._index_finding(record)
 
     def save_evidence(
         self, evidence: Evidence, df: pd.DataFrame, *, scope: str | None = None
     ) -> str:
+        evidence = canonicalize_evidence_reason(_with_question_id(evidence, scope))
         evidence_id = self._evidence_id(evidence)
-        record = self._resolve_evidence_record(
-            evidence_id, evidence, df, scope=scope
-        )
-        self._cache.set(
-            "evidence", evidence_id, record.model_dump(mode="json")
-        )
+        record = self._resolve_evidence_record(evidence_id, evidence, df, scope=scope)
+        self._cache.set("evidence", evidence_id, record.model_dump(mode="json"))
         self._index_evidence(record)
         return evidence_id
 
@@ -123,18 +116,11 @@ class SurveyArtifactStore:
         payload = self._cache.get("evidence", evidence_id)
         return EvidenceRecord.model_validate(payload) if payload else None
 
-    def list_evidences(
-        self, *, scope: str | None = None
-    ) -> list[EvidenceRecord]:
+    def list_evidences(self, *, scope: str | None = None) -> list[EvidenceRecord]:
         records = [
-            EvidenceRecord.model_validate(v)
-            for _, v in self._cache.items("evidence")
+            EvidenceRecord.model_validate(v) for _, v in self._cache.items("evidence")
         ]
-        return (
-            records
-            if scope is None
-            else [r for r in records if r.scope == scope]
-        )
+        return records if scope is None else [r for r in records if r.scope == scope]
 
     def artifact_summary(self, *, scope: str | None = None) -> dict[str, Any]:
         scopes = {
@@ -163,18 +149,11 @@ class SurveyArtifactStore:
             scope=scope,
         )
 
-    def list_findings(
-        self, *, scope: str | None = None
-    ) -> list[FindingRecord]:
+    def list_findings(self, *, scope: str | None = None) -> list[FindingRecord]:
         records = [
-            FindingRecord.model_validate(v)
-            for _, v in self._cache.items("findings")
+            FindingRecord.model_validate(v) for _, v in self._cache.items("findings")
         ]
-        return (
-            records
-            if scope is None
-            else [r for r in records if r.scope == scope]
-        )
+        return records if scope is None else [r for r in records if r.scope == scope]
 
     def search_findings(
         self, query: str, *, scope: str | None = None
@@ -278,8 +257,7 @@ class SurveyArtifactStore:
 
     def rebuild(self, df: pd.DataFrame) -> None:
         evidence_items = [
-            EvidenceRecord.model_validate(v)
-            for _, v in self._cache.items("evidence")
+            EvidenceRecord.model_validate(v) for _, v in self._cache.items("evidence")
         ]
         findings_items = self._cache.items("findings")
         self._cache.clear("evidence")
@@ -295,12 +273,8 @@ class SurveyArtifactStore:
 
     def has_artifacts(self, *, scope: str | None = None) -> bool:
         if scope is None:
-            return bool(
-                self._cache.items("findings") or self._cache.items("evidence")
-            )
-        return bool(
-            self.list_findings(scope=scope) or self.list_evidences(scope=scope)
-        )
+            return bool(self._cache.items("findings") or self._cache.items("evidence"))
+        return bool(self.list_findings(scope=scope) or self.list_evidences(scope=scope))
 
     def export_snapshot(self) -> dict[str, list[dict[str, Any]]]:
         namespaces = [
@@ -317,9 +291,7 @@ class SurveyArtifactStore:
             for namespace in namespaces
         }
 
-    def import_snapshot(
-        self, snapshot: dict[str, list[dict[str, Any]]]
-    ) -> None:
+    def import_snapshot(self, snapshot: dict[str, list[dict[str, Any]]]) -> None:
         self.discard(kind="all")
         for namespace, items in snapshot.items():
             for item in items:
@@ -327,9 +299,7 @@ class SurveyArtifactStore:
 
     def as_tools(self) -> list[StructuredTool]:
         def _tool_json(payload: Any) -> str:
-            return json.dumps(
-                payload, ensure_ascii=False, separators=(",", ":")
-            )
+            return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
         def _finding_summary(record: FindingRecord) -> dict[str, Any]:
             return {
@@ -417,7 +387,7 @@ class SurveyArtifactStore:
         *,
         scope: str | None,
     ) -> EvidenceRecord:
-        evidence = _with_question_id(evidence, scope)
+        evidence = canonicalize_evidence_reason(_with_question_id(evidence, scope))
         validate_evidence(evidence, df)
         from ._helpers import eval_mask
 
@@ -441,7 +411,7 @@ class SurveyArtifactStore:
         )
 
     def _evidence_id(self, evidence: Evidence) -> str:
-        return stable_evidence_id(evidence)
+        return stable_evidence_id(canonicalize_evidence_reason(evidence))
 
     def _finding_id(self, scope: str | None, idx: int, claim: str) -> str:
         payload = f"{scope or ''}|{idx}|{claim}"
@@ -450,9 +420,7 @@ class SurveyArtifactStore:
     def _index_finding(self, record: FindingRecord) -> None:
         if self.embedding_backend is None:
             return
-        vector = self.embedding_backend.embed_texts(
-            [_finding_search_text(record)]
-        )[0]
+        vector = self.embedding_backend.embed_texts([_finding_search_text(record)])[0]
         self._cache.set(
             "finding_vectors",
             record.finding_id,
@@ -462,9 +430,7 @@ class SurveyArtifactStore:
     def _index_evidence(self, record: EvidenceRecord) -> None:
         if self.embedding_backend is None:
             return
-        vector = self.embedding_backend.embed_texts(
-            [_evidence_search_text(record)]
-        )[0]
+        vector = self.embedding_backend.embed_texts([_evidence_search_text(record)])[0]
         self._cache.set(
             "evidence_vectors",
             record.evidence_id,
@@ -550,9 +516,7 @@ class SurveyArtifactStore:
         ranked.sort(key=lambda item: item[0], reverse=True)
         return [record for _, record in ranked[:top_k]]
 
-    def _lexical_rank(
-        self, query: str, records, *, text_getter, scope: str | None
-    ):
+    def _lexical_rank(self, query: str, records, *, text_getter, scope: str | None):
         scored = []
         for record in records:
             if scope is not None and getattr(record, "scope", None) != scope:
@@ -628,10 +592,7 @@ def _window_chunks(text: str, query_len: int) -> list[str]:
     if query_len <= 0 or len(text) <= query_len:
         return [text]
     step = max(query_len // 2, 1)
-    return [
-        text[i : i + query_len]
-        for i in range(0, len(text) - query_len + 1, step)
-    ]
+    return [text[i : i + query_len] for i in range(0, len(text) - query_len + 1, step)]
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:

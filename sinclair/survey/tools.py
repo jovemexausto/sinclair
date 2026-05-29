@@ -15,7 +15,7 @@ from ._helpers import eval_mask
 from .config import SurveyIdentityPolicy
 from .models import Evidence
 from .provenance import normalize_chart_slug, stable_evidence_id
-from .validators import validate_evidence
+from .validators import canonicalize_evidence_reason, validate_evidence
 
 
 class IntentInput(BaseModel):
@@ -111,44 +111,6 @@ class SurveyToolKit:
                 return label or None
             return None
 
-        def _has_reason_context(
-            reason: str,
-            *,
-            question_id: str,
-            label: str,
-            match_label: str | None,
-        ) -> bool:
-            normalized_reason = " ".join(reason.casefold().split())
-            if not normalized_reason:
-                return False
-            normalized_question = " ".join(question_id.casefold().split())
-            target_label = match_label or label
-            normalized_label = " ".join(target_label.casefold().split())
-            return (
-                normalized_question in normalized_reason
-                and normalized_label in normalized_reason
-            )
-
-        def _canonical_reason(
-            reason: str,
-            *,
-            question_id: str,
-            label: str,
-            match_label: str | None,
-        ) -> str:
-            cleaned = reason.strip()
-            if _has_reason_context(
-                cleaned,
-                question_id=question_id,
-                label=label,
-                match_label=match_label,
-            ):
-                return cleaned
-            observable_label = (match_label or label).strip()
-            if observable_label:
-                return f"Ao responder {question_id}, menciona {observable_label}."
-            return f"Ao responder {question_id}, entra no recorte {label}."
-
         def get_final_chart_numbers(
             question_id: str,
             intent: str,
@@ -177,16 +139,12 @@ class SurveyToolKit:
                     base_rule=base_rule
                     or f"df[{question_id!r}].notna() & df[{question_id!r}].astype(str).str.strip().ne('')",
                     rule=rule,
-                    reason=_canonical_reason(
-                        item.reason,
-                        question_id=question_id,
-                        label=item.label,
-                        match_label=match_label,
-                    ),
+                    reason=item.reason,
                     source_column=question_id,
                     match_label=match_label,
                     question_id=question_id,
                 )
+                evidence = canonicalize_evidence_reason(evidence)
                 validate_evidence(evidence, self.df)
                 base_mask = eval_mask(evidence.base_rule, self.df)
                 rule_mask = eval_mask(evidence.rule, self.df)

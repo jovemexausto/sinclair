@@ -1136,6 +1136,25 @@ def test_store_semantic_search_finds_relevant_evidence(
     assert results[0].evidence.match_label == "Natura"
 
 
+def test_store_canonicalizes_legacy_evidence_reason_before_validation():
+    df = pd.DataFrame({"q1": ["Nubank", "Inter", "Nubank"]})
+    store = SurveyArtifactStore()
+    evidence = Evidence(
+        base_rule="df['q1'].notna()",
+        rule="df['q1'] == 'Nubank'",
+        reason="Marca mais recorrente na carteira atual.",
+        source_column="q1",
+        match_label="Nubank",
+        question_id="q1",
+    )
+
+    evidence_id = store.save_evidence(evidence, df, scope="question:q1")
+    record = store.get_evidence(evidence_id)
+
+    assert record is not None
+    assert record.evidence.reason == "Ao responder q1, menciona Nubank."
+
+
 def test_store_semantic_search_falls_back_to_lexical(
     report_fixture: ReportFixture,
 ):

@@ -117,7 +117,24 @@ def validate_evidence(evidence: Evidence, df: pd.DataFrame) -> None:
         raise ValueError("rule must be an explicit subset of base_rule")
 
 
+def canonicalize_evidence_reason(evidence: Evidence) -> Evidence:
+    if _reason_has_required_context(evidence):
+        return evidence
+    question_token = str(evidence.question_id or evidence.source_column or "").strip()
+    if not question_token:
+        return evidence
+    label = str(evidence.match_label or "").strip()
+    reason = (
+        f"Ao responder {question_token}, menciona {label}."
+        if label
+        else f"Ao responder {question_token}, entra no recorte observado."
+    )
+    return evidence.model_copy(update={"reason": reason})
+
+
 def _validate_evidence_reason(evidence: Evidence) -> None:
+    if _reason_has_required_context(evidence):
+        return
     normalized_reason = " ".join(evidence.reason.casefold().split())
     scope_tokens = [evidence.question_id, evidence.source_column]
     if any(scope_tokens):
@@ -138,6 +155,26 @@ def _validate_evidence_reason(evidence: Evidence) -> None:
             raise ValueError(
                 "evidence.reason must mention the matched label when match_label is set"
             )
+
+
+def _reason_has_required_context(evidence: Evidence) -> bool:
+    normalized_reason = " ".join(evidence.reason.casefold().split())
+    scope_tokens = [evidence.question_id, evidence.source_column]
+    if any(scope_tokens):
+        normalized_scope_tokens = [
+            " ".join(str(token).casefold().split())
+            for token in scope_tokens
+            if str(token or "").strip()
+        ]
+        if normalized_scope_tokens and not any(
+            token in normalized_reason for token in normalized_scope_tokens
+        ):
+            return False
+    if evidence.match_label is not None:
+        normalized_match_label = " ".join(evidence.match_label.casefold().split())
+        if normalized_match_label not in normalized_reason:
+            return False
+    return True
 
 
 def validate_datum(
