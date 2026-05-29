@@ -46,9 +46,7 @@ def validate_report(
     if len(report.findings) < policy.min_findings:
         raise ValueError("report must include at least one finding")
     if len(report.charts) < policy.min_charts:
-        raise ValueError(
-            f"report must include at least {policy.min_charts} chart(s)"
-        )
+        raise ValueError(f"report must include at least {policy.min_charts} chart(s)")
     if len(report.citations) < policy.min_citations:
         raise ValueError(
             f"report must include at least {policy.min_citations} citation(s)"
@@ -68,9 +66,7 @@ def validate_report(
     _validate_chart_anchors(report)
     percentages = visible_percentages_with_spans(report.markdown)
     if policy.require_percent_citations:
-        cited_spans = _validate_citations(
-            report, df, chart_refs, legacy_chart_refs
-        )
+        cited_spans = _validate_citations(report, df, chart_refs, legacy_chart_refs)
         for pct in percentages:
             if pct not in cited_spans:
                 raise ValueError(
@@ -132,29 +128,21 @@ def validate_datum(
         int((base_mask & rule_mask).sum()) / int(base_mask.sum()) * 100, 1
     )
     if abs(value_pct - expected_pct) > 0.1:
-        raise ValueError(
-            f"{label!r}: expected {expected_pct}, got {value_pct}"
-        )
+        raise ValueError(f"{label!r}: expected {expected_pct}, got {value_pct}")
     return float(value_pct)
 
 
-def _validate_question_scope(
-    report: Report, analysis_question_id: str
-) -> None:
+def _validate_question_scope(report: Report, analysis_question_id: str) -> None:
     for finding in report.findings:
         for evidence in finding.evidences:
             _validate_question_scoped_evidence(evidence, analysis_question_id)
 
     for chart in report.charts:
         if chart.nr_questao != analysis_question_id:
-            raise ValueError(
-                f"chart provenance must stay on {analysis_question_id!r}"
-            )
+            raise ValueError(f"chart provenance must stay on {analysis_question_id!r}")
         for datum in chart.data:
             if datum.evidence is not None:
-                _validate_question_scoped_evidence(
-                    datum.evidence, analysis_question_id
-                )
+                _validate_question_scoped_evidence(datum.evidence, analysis_question_id)
             for series in datum.series:
                 _validate_question_scoped_evidence(
                     series.evidence, analysis_question_id
@@ -182,21 +170,15 @@ def _validate_question_scoped_evidence(
         evidence.question_id is not None
         and evidence.question_id != analysis_question_id
     ):
-        raise ValueError(
-            f"evidence provenance must stay on {analysis_question_id!r}"
-        )
+        raise ValueError(f"evidence provenance must stay on {analysis_question_id!r}")
     if (
         evidence.source_column is not None
         and evidence.source_column != analysis_question_id
     ):
-        raise ValueError(
-            f"evidence provenance must stay on {analysis_question_id!r}"
-        )
+        raise ValueError(f"evidence provenance must stay on {analysis_question_id!r}")
     rule_columns = referenced_df_columns(evidence.rule)
     if rule_columns - {analysis_question_id}:
-        raise ValueError(
-            f"rule provenance must stay on {analysis_question_id!r}"
-        )
+        raise ValueError(f"rule provenance must stay on {analysis_question_id!r}")
 
 
 def _validate_charts(
@@ -217,9 +199,7 @@ def _validate_charts(
         if not chart.title.strip() or not chart.data:
             raise ValueError("chart title and data are required")
         _validate_human_label(chart.title, field_name="chart.title")
-        chart.slug = normalize_chart_slug(
-            chart.slug or ""
-        ) or stable_chart_slug(
+        chart.slug = normalize_chart_slug(chart.slug or "") or stable_chart_slug(
             chart_index=chart_index,
             title=chart.title,
             nr_questao=chart.nr_questao,
@@ -234,9 +214,7 @@ def _validate_charts(
                         f"chart datum {datum.label!r} must declare a single nr_questao scope"
                     )
                 chart_scope_ids.add(datum_scope_id)
-                value = validate_datum(
-                    datum.label, datum.value_pct, datum.evidence, df
-                )
+                value = validate_datum(datum.label, datum.value_pct, datum.evidence, df)
                 datum.evidence_id = stable_evidence_id(datum.evidence)
                 datum.datum_id = stable_datum_id(
                     chart_index=chart_index,
@@ -252,13 +230,9 @@ def _validate_charts(
                         "label": datum.label,
                         "series": None,
                     }
-                    legacy_chart_refs[(chart_index, datum.label, None)] = (
-                        datum.datum_id
-                    )
+                    legacy_chart_refs[(chart_index, datum.label, None)] = datum.datum_id
             for series in datum.series:
-                _validate_human_label(
-                    series.name, field_name="chart series name"
-                )
+                _validate_human_label(series.name, field_name="chart series name")
                 series_scope_id = _evidence_scope_id(series.evidence)
                 if series_scope_id is None:
                     raise ValueError(
@@ -283,9 +257,9 @@ def _validate_charts(
                         "label": datum.label,
                         "series": series.name,
                     }
-                    legacy_chart_refs[
-                        (chart_index, datum.label, series.name)
-                    ] = series.datum_id
+                    legacy_chart_refs[(chart_index, datum.label, series.name)] = (
+                        series.datum_id
+                    )
         if chart.nr_questao is not None:
             if chart_scope_ids and chart_scope_ids != {chart.nr_questao}:
                 raise ValueError(
@@ -299,16 +273,12 @@ def _validate_charts(
 def _validate_chart_anchors(report: Report) -> None:
     if not report.charts:
         return
-    chart_slugs = [
-        chart.slug for chart in report.charts if chart.slug is not None
-    ]
+    chart_slugs = [chart.slug for chart in report.charts if chart.slug is not None]
     report.markdown = normalize_chart_anchors(report.markdown, chart_slugs)
     anchors = list_chart_anchors(report.markdown)
     unknown = sorted(set(anchors) - set(chart_slugs))
     if unknown:
-        raise ValueError(
-            f"markdown includes unknown chart anchors: {unknown!r}"
-        )
+        raise ValueError(f"markdown includes unknown chart anchors: {unknown!r}")
     missing = [slug for slug in chart_slugs if anchors.count(slug) == 0]
     if missing:
         raise ValueError(
@@ -346,9 +316,7 @@ def _validate_citations(
             if citation.target.evidence is None:
                 raise ValueError("response_set citation requires evidence")
             validate_evidence(citation.target.evidence, df)
-            citation.target.evidence_id = stable_evidence_id(
-                citation.target.evidence
-            )
+            citation.target.evidence_id = stable_evidence_id(citation.target.evidence)
             if marker_span is None and citation.anchor_text is None:
                 raise ValueError(
                     f"response_set citation {citation.citation_id!r} requires either an inline marker or anchor_text"
@@ -360,9 +328,7 @@ def _validate_citations(
             continue
         if citation.target.kind != "chart_datum":
             continue
-        datum_id = _resolve_chart_datum_target(
-            citation, chart_refs, legacy_chart_refs
-        )
+        datum_id = _resolve_chart_datum_target(citation, chart_refs, legacy_chart_refs)
         ref = chart_refs[datum_id]
         raw_value = ref["value"]
         if raw_value is None:
@@ -372,6 +338,7 @@ def _validate_citations(
         value = float(raw_value)
         citation.target.datum_id = datum_id
         citation.target.evidence_id = str(ref["evidence_id"])
+        citation.target.evidence = None
         matched = None
         if marker_span is not None:
             marker_start, _ = marker_span
@@ -443,10 +410,7 @@ def _resolve_chart_datum_target(
     if citation.target.datum_id is not None:
         if citation.target.datum_id in chart_refs:
             return citation.target.datum_id
-    if (
-        citation.target.chart_index is not None
-        and citation.target.label is not None
-    ):
+    if citation.target.chart_index is not None and citation.target.label is not None:
         ref_key = (
             citation.target.chart_index,
             citation.target.label,
@@ -518,9 +482,7 @@ def _find_cited_percentage_in_anchor(
     matches = [
         (pct, start, end)
         for pct, start, end in percentages
-        if anchor_start <= start
-        and end <= anchor_end
-        and abs(pct - value) <= 0.1
+        if anchor_start <= start and end <= anchor_end and abs(pct - value) <= 0.1
     ]
     if len(matches) != 1:
         return None
@@ -534,18 +496,14 @@ def _validate_evidence_scope(
 ) -> None:
     effective = question_id or source_column
     if effective is not None and effective != expected_question_id:
-        raise ValueError(
-            f"evidence provenance must stay on {expected_question_id!r}"
-        )
+        raise ValueError(f"evidence provenance must stay on {expected_question_id!r}")
 
 
 def _validate_question_field(
     question_id: str | None, expected_question_id: str
 ) -> None:
     if question_id is not None and question_id != expected_question_id:
-        raise ValueError(
-            f"evidence provenance must stay on {expected_question_id!r}"
-        )
+        raise ValueError(f"evidence provenance must stay on {expected_question_id!r}")
 
 
 _QUESTION_CODE_RE = re.compile(r"^(q|p)\d+(?:_[a-z0-9]+)?$", re.IGNORECASE)

@@ -659,6 +659,77 @@ def test_validate_report_resolves_chart_datum_by_unique_label_when_index_is_wron
     assert report.citations[0].target.datum_id == report.charts[0].data[0].datum_id
 
 
+def test_validate_report_discards_raw_chart_citation_evidence():
+    df = pd.DataFrame({"q1": ["a", "a", "b"]})
+    datum_evidence = Evidence(
+        base_rule="df['q1'].notna()",
+        rule="df['q1'] == 'a'",
+        reason="Bucket canônico do gráfico.",
+        source_column="q1",
+        question_id="q1",
+    )
+    report = Report(
+        markdown="# Report\n\n## Section\n\nA lidera com 66.7%[ct:ct_a].\n\n[[chart:chart-a]]",
+        findings=[
+            Finding(
+                claim="A lidera.",
+                implication="Priorizar A.",
+                evidences=[datum_evidence],
+                confidence=0.9,
+            )
+        ],
+        citations=[
+            Citation(
+                citation_id="ct_a",
+                target=CitationTarget(
+                    kind="chart_datum",
+                    chart_index=0,
+                    label="A",
+                    evidence=Evidence(
+                        base_rule="df['q1'] == 'b'",
+                        rule="df['q1'] == 'a'",
+                        reason="Filtro legado no alvo da citação.",
+                        source_column="q1",
+                        question_id="q1",
+                    ),
+                ),
+            )
+        ],
+        charts=[
+            Chart(
+                type="bar",
+                title="Chart A",
+                slug="chart-a",
+                nr_questao="q1",
+                unit="%",
+                data=[
+                    ChartDatum(
+                        label="A",
+                        value_pct=66.7,
+                        evidence=datum_evidence,
+                    )
+                ],
+            )
+        ],
+    )
+
+    validate_report(
+        report,
+        df,
+        policy=SurveyValidationPolicy(
+            min_markdown_chars=1,
+            min_findings=1,
+            min_charts=1,
+            min_citations=1,
+        ),
+    )
+
+    assert report.citations[0].target.evidence is None
+    assert (
+        report.citations[0].target.evidence_id == report.charts[0].data[0].evidence_id
+    )
+
+
 def test_validate_report_keeps_same_percentage_distinct_across_two_charts(
     report_fixture: ReportFixture,
 ):
