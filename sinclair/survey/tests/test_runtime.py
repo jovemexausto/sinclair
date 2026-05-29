@@ -3,13 +3,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-from langchain_core.messages import AIMessage
 
-from sinclair import Agent, AgentConfig
 from sinclair.survey import (
     BaselineRun,
     BenchmarkResult,
