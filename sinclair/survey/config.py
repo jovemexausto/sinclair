@@ -25,14 +25,12 @@ class SurveyIdentityPolicy:
 class SurveyDefaults:
     model: str = "gpt-5.4"
     temperature: float = 1.0
-    reasoning_level: str = "low"
+    reasoning_level: str = "high"
     max_iterations: int = 128
     finalization_window: int = 16
     tool_retries: int = 1
     verbose: bool = False
-    identity: SurveyIdentityPolicy = field(
-        default_factory=SurveyIdentityPolicy
-    )
+    identity: SurveyIdentityPolicy = field(default_factory=SurveyIdentityPolicy)
     validation_policy: SurveyValidationPolicy = field(
         default_factory=SurveyValidationPolicy
     )

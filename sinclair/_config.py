@@ -20,11 +20,9 @@ from ._obs import ObserverFn
 class AgentConfig:
     system_prompt: str = "You are a helpful assistant."
     llm: BaseChatModel | None = None  # if set, model/temperature are ignored
-    model: str = "gpt-5.4-mini"
+    model: str = "gpt-5.4"
     temperature: float = 1.0
-    reasoning_level: str | None = (
-        "low"  # OpenAI reasoning effort: low | medium | high
-    )
+    reasoning_level: str | None = "high"
     max_iterations: int = 10
     finalization_window: int = 2
     tool_retries: int = 2

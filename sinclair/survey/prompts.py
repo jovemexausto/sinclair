@@ -47,12 +47,8 @@ Siga essa ordem. Não pule etapas.
 </fluxo>
 
 <status-de-progresso>
-Toda tool com `intent` deve receber uma frase curta, em primeira pessoa, em linguagem de produto.
-
-- Escreva como status para o usuário, não como log técnico
+- Toda tool com `intent` deve receber uma frase curta, em primeira pessoa, em linguagem de produto.
 - Não mencione erro interno, regex, nome de tool, id, coluna ou detalhe de implementação
-- Exemplo bom: `Estou ajustando o recorte principal.`
-- Exemplo ruim: `Estou corrigindo invalid syntax na regex de Q3.`
 </status-de-progresso>
 
 <exemplos>
