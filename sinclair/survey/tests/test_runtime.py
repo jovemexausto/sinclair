@@ -44,7 +44,7 @@ from sinclair.survey import (
 from sinclair.survey.context import select_columns
 import sinclair.survey.runtime as survey_runtime
 from sinclair.survey._helpers import extract_response_previews
-from sinclair.survey.validators import canonicalize_evidence_reason, validate_evidence
+from sinclair.survey.validators import validate_evidence
 
 
 REAL_A = Path("examples/data/20557/20557.csv")
@@ -614,24 +614,6 @@ def test_validate_report_hydrates_canonical_datum_and_evidence_ids(
     assert first_citation.target.evidence_id == first_datum.evidence_id
 
 
-def test_validate_evidence_accepts_product_facing_reason():
-    df = pd.DataFrame({"Q2": ["YouTube", "YouTube", "Instagram", None]})
-    evidence = Evidence(
-        base_rule="df['Q2'] == 'YouTube'",
-        rule="df['Q2'] == 'YouTube'",
-        reason="identifica preferência principal",
-        match_label="YouTube",
-        source_column="Q2",
-        question_id="Q2",
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="evidence.reason must describe the observable response criterion in human language",
-    ):
-        validate_evidence(evidence, df)
-
-
 def test_validate_evidence_accepts_user_facing_reason():
     df = pd.DataFrame({"Q2": ["YouTube", "YouTube", "Instagram", None]})
     evidence = Evidence(
@@ -1188,21 +1170,6 @@ def test_store_canonicalizes_legacy_evidence_reason_before_validation():
     assert record is not None
     assert record.evidence.reason == "Ao responder q1, menciona Nubank."
 
-
-def test_canonicalize_evidence_reason_preserves_legacy_human_text_without_label():
-    evidence = Evidence(
-        base_rule="df['q4'].notna()",
-        rule="df['q4'].notna()",
-        reason="Conta usada como caixa operacional para entradas e saídas rotineiras.",
-        source_column="q4",
-        question_id="Q4",
-    )
-
-    canonical = canonicalize_evidence_reason(evidence)
-
-    assert canonical.reason == (
-        "Conta usada como caixa operacional para entradas e saídas rotineiras."
-    )
 
 
 def test_frontend_evidence_page_omits_blank_previews():

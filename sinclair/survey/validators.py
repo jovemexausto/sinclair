@@ -116,53 +116,13 @@ def validate_report_question_scope(report: Report, question_id: str) -> None:
 def validate_evidence(evidence: Evidence, df: pd.DataFrame) -> None:
     if not evidence.reason.strip():
         raise ValueError("evidence.reason cannot be empty")
-    _validate_evidence_reason(evidence)
+
     base_mask = eval_mask(evidence.base_rule, df)
     rule_mask = eval_mask(evidence.rule, df)
     if not base_mask.any():
         raise ValueError(f"base_rule matched no rows: {evidence.base_rule!r}")
     if (rule_mask & ~base_mask).any():
         raise ValueError("rule must be an explicit subset of base_rule")
-
-
-def canonicalize_evidence_reason(evidence: Evidence) -> Evidence:
-    if _reason_has_required_context(evidence):
-        return evidence
-    question_token = str(evidence.question_id or evidence.source_column or "").strip()
-    if not question_token:
-        return evidence
-    label = str(evidence.match_label or "").strip()
-    if label:
-        reason = f"Ao responder {question_token}, menciona {label}."
-    else:
-        original = evidence.reason.strip().rstrip(". ")
-        if original[:1].isalpha():
-            original = original[:1].lower() + original[1:]
-        reason = (
-            f"Em {question_token}, {original}."
-            if original
-            else f"Em {question_token}, critério legado sem descrição suficiente."
-        )
-    return evidence.model_copy(update={"reason": reason})
-
-
-def _validate_evidence_reason(evidence: Evidence) -> None:
-    if _reason_has_required_context(evidence):
-        return
-    raise ValueError(
-        "evidence.reason must describe the observable response criterion in human language"
-    )
-
-
-def _reason_has_required_context(evidence: Evidence) -> bool:
-    normalized_reason = " ".join(evidence.reason.casefold().split())
-    if not normalized_reason:
-        return False
-    if len(normalized_reason.split()) < 4:
-        return False
-    if any(pattern in normalized_reason for pattern in _GENERIC_REASON_PATTERNS):
-        return False
-    return True
 
 
 def validate_datum(

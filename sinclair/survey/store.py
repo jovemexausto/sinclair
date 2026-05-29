@@ -22,7 +22,7 @@ from .config import SurveyIdentityPolicy
 from .embeddings import EmbeddingBackend
 from .models import Evidence, EvidenceRecord, FindingRecord, Report
 from .provenance import stable_evidence_id
-from .validators import canonicalize_evidence_reason, validate_evidence
+from .validators import validate_evidence
 
 
 class CacheBackend(ABC):
@@ -101,7 +101,6 @@ class SurveyArtifactStore:
     def save_evidence(
         self, evidence: Evidence, df: pd.DataFrame, *, scope: str | None = None
     ) -> str:
-        evidence = canonicalize_evidence_reason(_with_question_id(evidence, scope))
         evidence_id = self._evidence_id(evidence)
         record = self._resolve_evidence_record(evidence_id, evidence, df, scope=scope)
         self._cache.set("evidence", evidence_id, record.model_dump(mode="json"))
@@ -387,7 +386,6 @@ class SurveyArtifactStore:
         *,
         scope: str | None,
     ) -> EvidenceRecord:
-        evidence = canonicalize_evidence_reason(_with_question_id(evidence, scope))
         validate_evidence(evidence, df)
         from ._helpers import eval_mask
 
@@ -411,7 +409,7 @@ class SurveyArtifactStore:
         )
 
     def _evidence_id(self, evidence: Evidence) -> str:
-        return stable_evidence_id(canonicalize_evidence_reason(evidence))
+        return stable_evidence_id(evidence)
 
     def _finding_id(self, scope: str | None, idx: int, claim: str) -> str:
         payload = f"{scope or ''}|{idx}|{claim}"
