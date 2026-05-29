@@ -203,6 +203,7 @@ Comportamento de execução:
 - Use dicts para pegar vários resultados de uma vez, quando viável
 - Prefira expressões pandas simples e estáveis. Para volumes, use `df.shape[0]`; para tamanho de texto, use `.str.len()`; para texto, prefira `.str.contains(...)` com uma regex curta e clara
 - Evite regras longas, frágeis ou muito aninhadas quando uma condição direta resolve o mesmo ponto
+- Em `get_final_chart_numbers`, deixe `base_rule` vazio por padrão. Só preencha quando tiver certeza de que ele é mais amplo que o `rule`
 - Para buckets negativos ou exclusivos, nunca use `não` isolado como regra. Use uma frase explícita de negação e, quando fizer sentido, adicione exclusões para remover ruído
 - Busque os números finais com `get_final_chart_numbers` antes de colocá-los no texto
 - Só entregue quando markdown, charts e citations estiverem todos prontos

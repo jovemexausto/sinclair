@@ -1328,6 +1328,61 @@ def test_toolkit_get_final_chart_numbers_accepts_mentions_shorthand(
     )
 
 
+def test_toolkit_get_final_chart_numbers_accepts_composed_mentions_shorthand():
+    df = pd.DataFrame({"Q2": ["YouTube", "Instagram", "YouTube", None]})
+    toolkit = SurveyToolKit(df=df, identity=SurveyIdentityPolicy())
+    tools = {tool.name: tool for tool in toolkit.as_tools()}
+
+    output = tools["get_final_chart_numbers"].invoke(
+        {
+            "question_id": "Q2",
+            "intent": "Estou congelando um recorte composto de YouTube.",
+            "title": "Platform preference",
+            "chart_slug": "platform-preference-composed",
+            "items": [
+                {
+                    "label": "YouTube",
+                    "rule": "mentions('YouTube') & df['Q2'].notna()",
+                    "base_rule": "mentions('YouTube') & df['Q2'].notna()",
+                    "reason": "Quando fala do canal preferido, cita YouTube.",
+                }
+            ],
+        }
+    )
+
+    payload = json.loads(output)
+    assert payload["publishable_datums"][0]["value_pct"] > 0
+    assert "mentions(" not in payload["chart"]["data"][0]["evidence"]["rule"]
+    assert "mentions(" not in payload["chart"]["data"][0]["evidence"]["base_rule"]
+
+
+def test_toolkit_get_final_chart_numbers_guides_invalid_base_rule():
+    df = pd.DataFrame({"Q2": ["YouTube", "Instagram", "YouTube", None]})
+    toolkit = SurveyToolKit(df=df, identity=SurveyIdentityPolicy())
+    tools = {tool.name: tool for tool in toolkit.as_tools()}
+
+    with pytest.raises(
+        ValueError,
+        match="leave base_rule empty or make it broader than rule",
+    ):
+        tools["get_final_chart_numbers"].invoke(
+            {
+                "question_id": "Q2",
+                "intent": "Estou congelando um recorte com base inválida.",
+                "title": "Platform preference",
+                "chart_slug": "platform-preference-invalid-base",
+                "items": [
+                    {
+                        "label": "YouTube",
+                        "rule": "mentions(YouTube)",
+                        "base_rule": "mentions(Instagram)",
+                        "reason": "Quando fala do canal preferido, cita YouTube.",
+                    }
+                ],
+            }
+        )
+
+
 def test_toolkit_get_final_chart_numbers_rejects_zero_match_datums(
     report_fixture: ReportFixture,
 ):

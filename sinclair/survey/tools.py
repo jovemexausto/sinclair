@@ -62,14 +62,18 @@ class SurveyToolKit:
 
         def _normalize_rule(expr: str, question_id: str) -> str:
             stripped = expr.strip()
-            match = re.fullmatch(r"mentions\((.+)\)", stripped)
-            if match:
-                pattern = match.group(1).strip()
+            if not stripped:
+                return stripped
+
+            def _replace_mentions(match: re.Match[str]) -> str:
+                raw_token = match.group(1)
+                token = _strip_literal(raw_token)
                 return (
                     f"df[{question_id!r}].astype(str).str.contains("
-                    f"{pattern!r}, case=False, regex=True, na=False)"
+                    f"{token!r}, case=False, regex=False, na=False)"
                 )
-            return stripped
+
+            return re.sub(r"mentions\(([^()]+)\)", _replace_mentions, stripped)
 
         def _reject_bare_negation_rule(rule: str) -> None:
             compact = re.sub(r"\s+", "", rule.casefold())
@@ -98,7 +102,7 @@ class SurveyToolKit:
 
         def _infer_match_label(rule: str) -> str | None:
             stripped = rule.strip()
-            mention_match = re.fullmatch(r"mentions\((.+)\)", stripped)
+            mention_match = re.search(r"mentions\(([^()]+)\)", stripped)
             if mention_match:
                 label = _strip_literal(mention_match.group(1))
                 return label or None
@@ -145,7 +149,14 @@ class SurveyToolKit:
                     question_id=question_id,
                 )
                 evidence = canonicalize_evidence_reason(evidence)
-                validate_evidence(evidence, self.df)
+                try:
+                    validate_evidence(evidence, self.df)
+                except ValueError as exc:
+                    if str(exc) == "rule must be an explicit subset of base_rule":
+                        raise ValueError(
+                            "rule must be an explicit subset of base_rule; leave base_rule empty or make it broader than rule"
+                        ) from exc
+                    raise
                 base_mask = eval_mask(evidence.base_rule, self.df)
                 rule_mask = eval_mask(evidence.rule, self.df)
                 match_mask = base_mask & rule_mask
