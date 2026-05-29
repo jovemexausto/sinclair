@@ -404,6 +404,19 @@ def test_validate_report_uses_policy_minima(report_fixture: ReportFixture):
         )
 
 
+def test_validate_report_rejects_chart_with_single_datum(
+    report_fixture: ReportFixture,
+):
+    report = _valid_report(report_fixture)
+    report.charts[0].data = report.charts[0].data[:1]
+
+    with pytest.raises(
+        ValueError,
+        match="at least 2 datums, ideally 3 or more if there is signal for it",
+    ):
+        validate_report(report, report_fixture.df)
+
+
 def test_validate_report_rejects_rule_outside_base(
     report_fixture: ReportFixture,
 ):
@@ -1416,7 +1429,12 @@ def test_toolkit_get_final_chart_numbers_freezes_exact_percentages(
                     "label": "Sim, com certeza",
                     "rule": f"df[{report_fixture.recommendation_col!r}] == 'Sim, com certeza'",
                     "reason": "Maximum recommendation certainty.",
-                }
+                },
+                {
+                    "label": "Talvez",
+                    "rule": f"df[{report_fixture.recommendation_col!r}] == 'Talvez'",
+                    "reason": "Tentative recommendation intent.",
+                },
             ],
         }
     )
@@ -1452,7 +1470,12 @@ def test_toolkit_get_final_chart_numbers_accepts_mentions_shorthand(
                     "label": "YouTube",
                     "rule": "mentions(YouTube)",
                     "reason": "Quando fala do canal preferido, cita YouTube.",
-                }
+                },
+                {
+                    "label": "Podcast",
+                    "rule": "mentions(Podcast)",
+                    "reason": "Quando fala do canal preferido, cita Podcast.",
+                },
             ],
         }
     )
@@ -1483,7 +1506,13 @@ def test_toolkit_get_final_chart_numbers_accepts_composed_mentions_shorthand():
                     "rule": "mentions('YouTube') & df['Q2'].notna()",
                     "base_rule": "mentions('YouTube') & df['Q2'].notna()",
                     "reason": "Quando fala do canal preferido, cita YouTube.",
-                }
+                },
+                {
+                    "label": "Instagram",
+                    "rule": "mentions('Instagram') & df['Q2'].notna()",
+                    "base_rule": "mentions('Instagram') & df['Q2'].notna()",
+                    "reason": "Quando fala do canal preferido, cita Instagram.",
+                },
             ],
         }
     )
@@ -1515,7 +1544,13 @@ def test_toolkit_get_final_chart_numbers_guides_invalid_base_rule():
                         "rule": "mentions(YouTube)",
                         "base_rule": "mentions(Instagram)",
                         "reason": "Quando fala do canal preferido, cita YouTube.",
-                    }
+                    },
+                    {
+                        "label": "Instagram",
+                        "rule": "mentions(Instagram)",
+                        "base_rule": "mentions(Instagram)",
+                        "reason": "Quando fala do canal preferido, cita Instagram.",
+                    },
                 ],
             }
         )
@@ -1539,7 +1574,12 @@ def test_toolkit_get_final_chart_numbers_rejects_zero_match_datums(
                         "label": "Nada",
                         "rule": f"df[{report_fixture.platform_col!r}] == 'inexistente'",
                         "reason": "Bucket propositalmente vazio.",
-                    }
+                    },
+                    {
+                        "label": "YouTube",
+                        "rule": f"df[{report_fixture.platform_col!r}] == 'YouTube'",
+                        "reason": "Quando fala do canal preferido, cita YouTube.",
+                    },
                 ],
             }
         )

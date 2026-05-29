@@ -247,6 +247,10 @@ def _validate_charts(
             raise ValueError("chart unit must be '%' for percentage charts")
         if not chart.title.strip() or not chart.data:
             raise ValueError("chart title and data are required")
+        if len(chart.data) < 2:
+            raise ValueError(
+                "chart must include at least 2 datums, ideally 3 or more if there is signal for it"
+            )
         _validate_human_label(chart.title, field_name="chart.title")
         chart.slug = normalize_chart_slug(chart.slug or "") or stable_chart_slug(
             chart_index=chart_index,

@@ -46,7 +46,10 @@ class PublishableDatumInput(BaseModel):
 class PublishableChartArgs(IntentInput):
     question_id: str
     title: str
-    items: list[PublishableDatumInput] = Field(min_length=1)
+    items: list[PublishableDatumInput] = Field(
+        min_length=2,
+        description="Provide at least 2 datums; prefer 3 or more when the question has enough real signal.",
+    )
     chart_slug: str = ""
     chart_type: Literal["bar"] = "bar"
 
@@ -219,6 +222,6 @@ class SurveyToolKit:
                 get_final_chart_numbers,
                 name="get_final_chart_numbers",
                 args_schema=PublishableChartArgs,
-                description="Freeze one publishable bar chart for a single question scope before markdown publication. `mentions(pattern)` is accepted as shorthand for text matching. The `reason` for each datum must be one short human sentence describing the observable criterion shown in the evidence modal.",
+                description="Freeze one publishable bar chart for a single question scope before markdown publication. `mentions(pattern)` is accepted as shorthand for text matching. The `reason` for each datum must be one short human sentence describing the observable criterion shown in the evidence modal. Always provide at least 2 datums, and prefer 3 or more when the question has enough real signal.",
             ),
         ]

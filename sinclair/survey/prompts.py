@@ -204,6 +204,7 @@ Comportamento de execução:
 - Prefira expressões pandas simples e estáveis. Para volumes, use `df.shape[0]`; para tamanho de texto, use `.str.len()`; para texto, prefira `.str.contains(...)` com uma regex curta e clara
 - Evite regras longas, frágeis ou muito aninhadas quando uma condição direta resolve o mesmo ponto
 - Em `get_final_chart_numbers`, deixe `base_rule` vazio por padrão. Só preencha quando tiver certeza de que ele é mais amplo que o `rule`
+- Em `get_final_chart_numbers`, nunca feche gráfico com menos de 2 datums; idealmente traga 3 ou mais quando houver sinal real suficiente
 - No `reason` de cada item do `get_final_chart_numbers`, escreva uma frase curta em linguagem humana explicando o critério observável que aparece na lista de evidências
 - Escreva o `reason` como o respondente fala ou descreve algo, e nunca como resumo executivo, nome de bucket ou código de pergunta
 - Bons exemplos de `reason`: `Quando fala do banco principal, cita Nubank.`; `Quando descreve a compra por impulso, menciona promoção e desconto.`; `Quando fala de cuidados com o corpo, cita hidratantes.`
