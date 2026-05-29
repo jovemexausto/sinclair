@@ -610,11 +610,16 @@ def test_validate_evidence_accepts_product_facing_reason(
         base_rule=f"df[{report_fixture.platform_col!r}] == 'YouTube'",
         rule=f"df[{report_fixture.platform_col!r}] == 'YouTube'",
         reason="identifica preferência principal",
+        match_label="YouTube",
         source_column=report_fixture.platform_col,
         question_id=report_fixture.platform_col,
     )
 
-    validate_evidence(evidence, report_fixture.df)
+    with pytest.raises(
+        ValueError,
+        match="evidence.reason must mention the source question or column",
+    ):
+        validate_evidence(evidence, report_fixture.df)
 
 
 def test_validate_evidence_accepts_user_facing_reason(
@@ -664,7 +669,8 @@ def test_validate_report_discards_raw_chart_citation_evidence():
     datum_evidence = Evidence(
         base_rule="df['q1'].notna()",
         rule="df['q1'] == 'a'",
-        reason="Bucket canônico do gráfico.",
+        reason="Ao responder q1, menciona a.",
+        match_label="a",
         source_column="q1",
         question_id="q1",
     )
@@ -688,7 +694,8 @@ def test_validate_report_discards_raw_chart_citation_evidence():
                     evidence=Evidence(
                         base_rule="df['q1'] == 'b'",
                         rule="df['q1'] == 'a'",
-                        reason="Filtro legado no alvo da citação.",
+                        reason="Ao responder q1, menciona a.",
+                        match_label="a",
                         source_column="q1",
                         question_id="q1",
                     ),
@@ -1264,6 +1271,11 @@ def test_toolkit_get_final_chart_numbers_freezes_exact_percentages(
         == "**38.9%**[ct:ct_1]"
     )
     assert payload["publishable_datums"][0]["target"]["evidence_id"].startswith("ev_")
+    assert payload["chart"]["data"][0]["evidence"]["match_label"] == "Sim, com certeza"
+    assert (
+        payload["chart"]["data"][0]["evidence"]["reason"]
+        == f"Ao responder {report_fixture.recommendation_col}, menciona Sim, com certeza."
+    )
 
 
 def test_toolkit_get_final_chart_numbers_accepts_mentions_shorthand(
@@ -1290,6 +1302,11 @@ def test_toolkit_get_final_chart_numbers_accepts_mentions_shorthand(
 
     payload = json.loads(output)
     assert payload["publishable_datums"][0]["value_pct"] > 0
+    assert payload["chart"]["data"][0]["evidence"]["match_label"] == "YouTube"
+    assert (
+        payload["chart"]["data"][0]["evidence"]["reason"]
+        == f"Ao responder {report_fixture.platform_col}, menciona YouTube."
+    )
 
 
 def test_toolkit_get_final_chart_numbers_rejects_zero_match_datums(

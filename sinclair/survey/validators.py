@@ -108,12 +108,36 @@ def validate_report_question_scope(report: Report, question_id: str) -> None:
 def validate_evidence(evidence: Evidence, df: pd.DataFrame) -> None:
     if not evidence.reason.strip():
         raise ValueError("evidence.reason cannot be empty")
+    _validate_evidence_reason(evidence)
     base_mask = eval_mask(evidence.base_rule, df)
     rule_mask = eval_mask(evidence.rule, df)
     if not base_mask.any():
         raise ValueError(f"base_rule matched no rows: {evidence.base_rule!r}")
     if (rule_mask & ~base_mask).any():
         raise ValueError("rule must be an explicit subset of base_rule")
+
+
+def _validate_evidence_reason(evidence: Evidence) -> None:
+    normalized_reason = " ".join(evidence.reason.casefold().split())
+    scope_tokens = [evidence.question_id, evidence.source_column]
+    if any(scope_tokens):
+        normalized_scope_tokens = [
+            " ".join(str(token).casefold().split())
+            for token in scope_tokens
+            if str(token or "").strip()
+        ]
+        if normalized_scope_tokens and not any(
+            token in normalized_reason for token in normalized_scope_tokens
+        ):
+            raise ValueError(
+                "evidence.reason must mention the source question or column"
+            )
+    if evidence.match_label is not None:
+        normalized_match_label = " ".join(evidence.match_label.casefold().split())
+        if normalized_match_label not in normalized_reason:
+            raise ValueError(
+                "evidence.reason must mention the matched label when match_label is set"
+            )
 
 
 def validate_datum(

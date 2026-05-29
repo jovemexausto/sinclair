@@ -30,10 +30,17 @@ class IntentInput(BaseModel):
 
 
 class PublishableDatumInput(BaseModel):
-    label: str
-    rule: str
-    base_rule: str = ""
-    reason: str
+    label: str = Field(description="Human bucket label to publish in the chart.")
+    rule: str = Field(
+        description="Boolean pandas rule for the observed group. `mentions(...)` is accepted as shorthand."
+    )
+    base_rule: str = Field(
+        default="",
+        description="Optional denominator rule. Leave empty to use non-empty answers from the same question.",
+    )
+    reason: str = Field(
+        description="Observable matching criterion, not an editorial takeaway. Example: 'Ao responder Q2, menciona Nubank.'"
+    )
 
 
 class PublishableChartArgs(IntentInput):
@@ -79,6 +86,69 @@ class SurveyToolKit:
                     "rules cannot match bare 'não' by itself; use an explicit phrase and exclusions when needed"
                 )
 
+        def _strip_literal(token: str) -> str:
+            stripped = token.strip()
+            if (
+                len(stripped) >= 2
+                and stripped[0] == stripped[-1]
+                and stripped[0] in {'"', "'"}
+            ):
+                return stripped[1:-1].strip()
+            return stripped
+
+        def _infer_match_label(rule: str) -> str | None:
+            stripped = rule.strip()
+            mention_match = re.fullmatch(r"mentions\((.+)\)", stripped)
+            if mention_match:
+                label = _strip_literal(mention_match.group(1))
+                return label or None
+            equality_match = re.search(
+                r"(?:==|\.eq\()\s*(['\"])(?P<value>.+?)\1\)?",
+                stripped,
+            )
+            if equality_match:
+                label = equality_match.group("value").strip()
+                return label or None
+            return None
+
+        def _has_reason_context(
+            reason: str,
+            *,
+            question_id: str,
+            label: str,
+            match_label: str | None,
+        ) -> bool:
+            normalized_reason = " ".join(reason.casefold().split())
+            if not normalized_reason:
+                return False
+            normalized_question = " ".join(question_id.casefold().split())
+            target_label = match_label or label
+            normalized_label = " ".join(target_label.casefold().split())
+            return (
+                normalized_question in normalized_reason
+                and normalized_label in normalized_reason
+            )
+
+        def _canonical_reason(
+            reason: str,
+            *,
+            question_id: str,
+            label: str,
+            match_label: str | None,
+        ) -> str:
+            cleaned = reason.strip()
+            if _has_reason_context(
+                cleaned,
+                question_id=question_id,
+                label=label,
+                match_label=match_label,
+            ):
+                return cleaned
+            observable_label = (match_label or label).strip()
+            if observable_label:
+                return f"Ao responder {question_id}, menciona {observable_label}."
+            return f"Ao responder {question_id}, entra no recorte {label}."
+
         def get_final_chart_numbers(
             question_id: str,
             intent: str,
@@ -99,6 +169,7 @@ class SurveyToolKit:
             chart_data = []
             datums = []
             for index, item in enumerate(items, start=1):
+                match_label = _infer_match_label(item.rule)
                 base_rule = _normalize_rule(item.base_rule, question_id)
                 rule = _normalize_rule(item.rule, question_id)
                 _reject_bare_negation_rule(rule)
@@ -106,8 +177,14 @@ class SurveyToolKit:
                     base_rule=base_rule
                     or f"df[{question_id!r}].notna() & df[{question_id!r}].astype(str).str.strip().ne('')",
                     rule=rule,
-                    reason=item.reason,
+                    reason=_canonical_reason(
+                        item.reason,
+                        question_id=question_id,
+                        label=item.label,
+                        match_label=match_label,
+                    ),
                     source_column=question_id,
+                    match_label=match_label,
                     question_id=question_id,
                 )
                 validate_evidence(evidence, self.df)
