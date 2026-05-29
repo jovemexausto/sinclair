@@ -45,6 +45,7 @@ from sinclair.survey import (
     validate_report,
 )
 from sinclair.survey.context import select_columns
+import sinclair.survey.runtime as survey_runtime
 from sinclair.survey.validators import validate_evidence
 
 
@@ -80,8 +81,7 @@ class FakeEmbeddingBackend(EmbeddingBackend):
                 [
                     1.0
                     if any(
-                        token in lowered
-                        for token in ["youtube", "platform", "channel"]
+                        token in lowered for token in ["youtube", "platform", "channel"]
                     )
                     else 0.0,
                     1.0
@@ -96,10 +96,7 @@ class FakeEmbeddingBackend(EmbeddingBackend):
                     )
                     else 0.0,
                     1.0
-                    if any(
-                        token in lowered
-                        for token in ["natura", "brand", "stocked"]
-                    )
+                    if any(token in lowered for token in ["natura", "brand", "stocked"])
                     else 0.0,
                 ]
             )
@@ -113,10 +110,7 @@ def report_fixture() -> ReportFixture:
     platform_col = next(
         col
         for col in df.columns
-        if df[col]
-        .astype(str)
-        .str.contains("YouTube", case=False, na=False)
-        .any()
+        if df[col].astype(str).str.contains("YouTube", case=False, na=False).any()
     )
     recommendation_col = next(
         col
@@ -135,11 +129,7 @@ def report_fixture() -> ReportFixture:
         .any()
     )
     open_text_col = max(
-        [
-            col
-            for col in df.columns
-            if df[col].astype(str).str.len().mean() > 10
-        ],
+        [col for col in df.columns if df[col].astype(str).str.len().mean() > 10],
         key=lambda col: df[col].astype(str).str.len().mean(),
     )
     identity = SurveyIdentityPolicy(respondent_id_column=respondent_id_col)
@@ -308,6 +298,68 @@ def test_validate_report_accepts_evidence_backed_report(
     validate_report(_valid_report(report_fixture), report_fixture.df)
 
 
+def test_report_study_uses_minimum_five_chart_policy(monkeypatch: pytest.MonkeyPatch):
+    df = pd.DataFrame({"id": [1], "q1": ["x"]})
+    captured: dict[str, int] = {}
+
+    def fake_run_report(*args, **kwargs):
+        defaults = kwargs.get("defaults")
+        captured["min_charts"] = defaults.validation_policy.min_charts
+        return Report(
+            markdown="## Study\n\nTexto suficiente para passar.",
+            findings=[
+                Finding(
+                    claim="A",
+                    implication="B",
+                    evidences=[
+                        Evidence(
+                            base_rule="df['q1'].notna()",
+                            rule="df['q1'].notna()",
+                            reason="Teste.",
+                            source_column="q1",
+                            question_id="q1",
+                        )
+                    ],
+                    confidence=0.9,
+                )
+            ],
+            citations=[],
+            charts=[
+                Chart(
+                    type="bar",
+                    title=f"Chart {i}",
+                    nr_questao="q1",
+                    data=[
+                        ChartDatum(
+                            label="A",
+                            value_pct=100.0,
+                            evidence=Evidence(
+                                base_rule="df['q1'].notna()",
+                                rule="df['q1'].notna()",
+                                reason="Teste.",
+                                source_column="q1",
+                                question_id="q1",
+                            ),
+                        )
+                    ],
+                )
+                for i in range(5)
+            ],
+        )
+
+    monkeypatch.setattr(survey_runtime, "run_report", fake_run_report)
+    monkeypatch.setattr(
+        survey_runtime.SurveyArtifactStore,
+        "ingest_report",
+        lambda *args, **kwargs: None,
+    )
+
+    result = survey_runtime.report_study(df, defaults=SurveyDefaults())
+
+    assert captured["min_charts"] == 5
+    assert len(result.charts) == 5
+
+
 def test_validate_report_accepts_other_columns_in_base_rule_for_question_scope(
     report_fixture: ReportFixture,
 ):
@@ -415,9 +467,7 @@ def test_validate_report_rejects_cross_question_source_column_in_question_scope(
         "[[chart:1]]"
     )
     report.findings = [report.findings[0]]
-    report.findings[0].evidences[
-        0
-    ].source_column = report_fixture.recommendation_col
+    report.findings[0].evidences[0].source_column = report_fixture.recommendation_col
     report.charts[0].data[0].evidence = report.findings[0].evidences[0]
 
     with pytest.raises(ValueError, match="evidence provenance"):
@@ -477,15 +527,11 @@ def test_validate_report_requires_each_duplicate_percentage_occurrence_to_be_cit
     report.citations = [
         Citation(
             citation_id="ct_first_dup",
-            target=CitationTarget(
-                kind="chart_datum", chart_index=0, label="YouTube"
-            ),
+            target=CitationTarget(kind="chart_datum", chart_index=0, label="YouTube"),
         ),
         Citation(
             citation_id="ct_second_dup",
-            target=CitationTarget(
-                kind="chart_datum", chart_index=0, label="YouTube"
-            ),
+            target=CitationTarget(kind="chart_datum", chart_index=0, label="YouTube"),
         ),
     ]
     validate_report(report, report_fixture.df)
@@ -509,9 +555,7 @@ def test_validate_report_rejects_missing_citation_marker(
     report = _valid_report(report_fixture)
     report.markdown = report.markdown.replace("[ct:ct_platform_share]", "")
 
-    with pytest.raises(
-        ValueError, match="does not disambiguate a visible 44.4%"
-    ):
+    with pytest.raises(ValueError, match="does not disambiguate a visible 44.4%"):
         validate_report(report, report_fixture.df)
 
 
@@ -599,10 +643,7 @@ def test_validate_report_replaces_model_supplied_datum_ids_with_canonical_ones(
     validate_report(report, report_fixture.df)
 
     assert report.charts[0].data[0].datum_id.startswith("dt_")
-    assert (
-        report.citations[0].target.datum_id
-        == report.charts[0].data[0].datum_id
-    )
+    assert report.citations[0].target.datum_id == report.charts[0].data[0].datum_id
 
 
 def test_validate_report_resolves_chart_datum_by_unique_label_when_index_is_wrong(
@@ -615,10 +656,7 @@ def test_validate_report_resolves_chart_datum_by_unique_label_when_index_is_wron
 
     validate_report(report, report_fixture.df)
 
-    assert (
-        report.citations[0].target.datum_id
-        == report.charts[0].data[0].datum_id
-    )
+    assert report.citations[0].target.datum_id == report.charts[0].data[0].datum_id
 
 
 def test_validate_report_keeps_same_percentage_distinct_across_two_charts(
@@ -638,9 +676,7 @@ def test_validate_report_keeps_same_percentage_distinct_across_two_charts(
     report.citations.append(
         Citation(
             citation_id="ct_platform_share_clone",
-            target=CitationTarget(
-                kind="chart_datum", chart_index=2, label="YouTube"
-            ),
+            target=CitationTarget(kind="chart_datum", chart_index=2, label="YouTube"),
         )
     )
     report.charts.append(
@@ -661,10 +697,7 @@ def test_validate_report_keeps_same_percentage_distinct_across_two_charts(
 
     validate_report(report, report_fixture.df)
 
-    assert (
-        report.citations[0].target.datum_id
-        != report.citations[1].target.datum_id
-    )
+    assert report.citations[0].target.datum_id != report.citations[1].target.datum_id
 
 
 def test_validate_report_allows_multi_scope_chart_when_chart_scope_is_not_declared(
@@ -731,21 +764,13 @@ def test_hydrate_report_for_frontend_renders_chart_block_and_refs(
 
     assert "```chart" in bundle.markdown
     assert "](ref:rf_lb_" in bundle.markdown
-    assert any(
-        ref.kind == "line_binding" for ref in bundle.references.values()
-    )
-    assert any(
-        ref.kind == "response_set" for ref in bundle.references.values()
-    )
-    assert any(
-        ref.kind == "datum_binding" for ref in bundle.references.values()
-    )
+    assert any(ref.kind == "line_binding" for ref in bundle.references.values())
+    assert any(ref.kind == "response_set" for ref in bundle.references.values())
+    assert any(ref.kind == "datum_binding" for ref in bundle.references.values())
     chart_block = bundle.chart_blocks[0]
     assert chart_block.payload["chart_id"] == report.charts[0].slug
     assert chart_block.payload["data"][0]["refId"].startswith("rf_dt_")
-    assert chart_block.payload["data"][0]["responseSetRefId"].startswith(
-        "rf_rs_"
-    )
+    assert chart_block.payload["data"][0]["responseSetRefId"].startswith("rf_rs_")
     assert (
         chart_block.payload["data"][0]["rationale"]
         == report.charts[0].data[0].evidence.reason
@@ -820,9 +845,7 @@ def test_frontend_controller_resolves_provenance_and_lazy_evidence_page(
         reports={f"question:{report_fixture.platform_col}": report},
     )
 
-    bundle = controller.render_report(
-        f"question:{report_fixture.platform_col}"
-    )
+    bundle = controller.render_report(f"question:{report_fixture.platform_col}")
     line_ref_id = next(
         ref_id
         for ref_id, ref in bundle.references.items()
@@ -889,9 +912,7 @@ def test_survey_study_exposes_frontend_controller(
     )
 
     controller = study.frontend_controller()
-    bundle = controller.render_report(
-        f"question:{report_fixture.platform_col}"
-    )
+    bundle = controller.render_report(f"question:{report_fixture.platform_col}")
 
     assert isinstance(controller, SurveyFrontendController)
     assert isinstance(bundle, FrontendRenderBundle)
@@ -968,8 +989,7 @@ def test_store_renders_only_matching_value_for_multiselect_dataset(
     assert "Avon" not in record.preview
     assert record.response_refs
     assert all(
-        ref.question_id == multiselect_fixture.multi_col
-        for ref in record.response_refs
+        ref.question_id == multiselect_fixture.multi_col for ref in record.response_refs
     )
 
 
@@ -978,9 +998,7 @@ def test_store_search_findings_returns_ingested_report_data(
 ):
     store = SurveyArtifactStore(identity=report_fixture.identity)
     report = _valid_report(report_fixture)
-    store.ingest_report(
-        report, report_fixture.df, scope=report_fixture.open_text_col
-    )
+    store.ingest_report(report, report_fixture.df, scope=report_fixture.open_text_col)
     results = store.search_findings("YouTube")
     assert results
     assert results[0].scope == report_fixture.open_text_col
@@ -989,9 +1007,7 @@ def test_store_search_findings_returns_ingested_report_data(
 def test_store_lexical_search_is_fuzzy(report_fixture: ReportFixture):
     store = SurveyArtifactStore(identity=report_fixture.identity)
     report = _valid_report(report_fixture)
-    store.ingest_report(
-        report, report_fixture.df, scope=report_fixture.open_text_col
-    )
+    store.ingest_report(report, report_fixture.df, scope=report_fixture.open_text_col)
 
     results = store.search_findings("youtub prioritise channel")
 
@@ -1007,9 +1023,7 @@ def test_store_semantic_search_finds_relevant_finding(
         embedding_backend=FakeEmbeddingBackend(),
     )
     report = _valid_report(report_fixture)
-    store.ingest_report(
-        report, report_fixture.df, scope=report_fixture.open_text_col
-    )
+    store.ingest_report(report, report_fixture.df, scope=report_fixture.open_text_col)
 
     results = store.semantic_search_findings(
         "Which channel should the team prioritize first?"
@@ -1049,9 +1063,7 @@ def test_store_semantic_search_falls_back_to_lexical(
 ):
     store = SurveyArtifactStore(identity=report_fixture.identity)
     report = _valid_report(report_fixture)
-    store.ingest_report(
-        report, report_fixture.df, scope=report_fixture.open_text_col
-    )
+    store.ingest_report(report, report_fixture.df, scope=report_fixture.open_text_col)
 
     results = store.semantic_search_findings("YouTube")
 
@@ -1067,9 +1079,7 @@ def test_store_hybrid_search_prefers_semantic_plus_lexical(
         embedding_backend=FakeEmbeddingBackend(),
     )
     report = _valid_report(report_fixture)
-    store.ingest_report(
-        report, report_fixture.df, scope=report_fixture.open_text_col
-    )
+    store.ingest_report(report, report_fixture.df, scope=report_fixture.open_text_col)
 
     results = store.hybrid_search_findings(
         "Which platform should distribution concentrate on?"
@@ -1082,9 +1092,7 @@ def test_store_hybrid_search_prefers_semantic_plus_lexical(
 def test_store_tool_output_is_compact_json(report_fixture: ReportFixture):
     store = SurveyArtifactStore(identity=report_fixture.identity)
     report = _valid_report(report_fixture)
-    store.ingest_report(
-        report, report_fixture.df, scope=report_fixture.open_text_col
-    )
+    store.ingest_report(report, report_fixture.df, scope=report_fixture.open_text_col)
     tools = {tool.name: tool for tool in store.as_tools()}
     output = tools["list_findings"].invoke({})
     assert "\n" not in output
@@ -1097,9 +1105,7 @@ def test_store_search_tool_uses_hybrid_output(report_fixture: ReportFixture):
         embedding_backend=FakeEmbeddingBackend(),
     )
     report = _valid_report(report_fixture)
-    store.ingest_report(
-        report, report_fixture.df, scope=report_fixture.open_text_col
-    )
+    store.ingest_report(report, report_fixture.df, scope=report_fixture.open_text_col)
     tools = {tool.name: tool for tool in store.as_tools()}
 
     output = tools["search_findings"].invoke(
@@ -1119,17 +1125,14 @@ def test_survey_app_exposes_context_store_and_identity_defaults(
     app = SurveyApp(
         report_fixture.df,
         study_context="Understand audience behavior and channel preference.",
-        question_map={
-            report_fixture.platform_col: "Which platform is used most?"
-        },
+        question_map={report_fixture.platform_col: "Which platform is used most?"},
         column_metadata=f"{report_fixture.platform_col}=channel; {report_fixture.recommendation_col}=advocacy; {report_fixture.open_text_col}=qualitative feedback",
         defaults=defaults,
     )
     assert app.study_context is not None
     assert app.store is not None
     assert (
-        app.defaults.identity.respondent_id_column
-        == report_fixture.respondent_id_col
+        app.defaults.identity.respondent_id_column == report_fixture.respondent_id_col
     )
 
 
@@ -1164,9 +1167,7 @@ def test_survey_study_exports_shared_store_artifacts(
 def test_toolkit_get_final_chart_numbers_freezes_exact_percentages(
     report_fixture: ReportFixture,
 ):
-    toolkit = SurveyToolKit(
-        df=report_fixture.df, identity=report_fixture.identity
-    )
+    toolkit = SurveyToolKit(df=report_fixture.df, identity=report_fixture.identity)
     tools = {tool.name: tool for tool in toolkit.as_tools()}
 
     output = tools["get_final_chart_numbers"].invoke(
@@ -1191,17 +1192,13 @@ def test_toolkit_get_final_chart_numbers_freezes_exact_percentages(
         payload["publishable_datums"][0]["canonical_citation_markdown"]
         == "**38.9%**[ct:ct_1]"
     )
-    assert payload["publishable_datums"][0]["target"][
-        "evidence_id"
-    ].startswith("ev_")
+    assert payload["publishable_datums"][0]["target"]["evidence_id"].startswith("ev_")
 
 
 def test_toolkit_get_final_chart_numbers_accepts_mentions_shorthand(
     report_fixture: ReportFixture,
 ):
-    toolkit = SurveyToolKit(
-        df=report_fixture.df, identity=report_fixture.identity
-    )
+    toolkit = SurveyToolKit(df=report_fixture.df, identity=report_fixture.identity)
     tools = {tool.name: tool for tool in toolkit.as_tools()}
 
     output = tools["get_final_chart_numbers"].invoke(
@@ -1224,12 +1221,34 @@ def test_toolkit_get_final_chart_numbers_accepts_mentions_shorthand(
     assert payload["publishable_datums"][0]["value_pct"] > 0
 
 
+def test_toolkit_get_final_chart_numbers_rejects_zero_match_datums(
+    report_fixture: ReportFixture,
+):
+    toolkit = SurveyToolKit(df=report_fixture.df, identity=report_fixture.identity)
+    tools = {tool.name: tool for tool in toolkit.as_tools()}
+
+    with pytest.raises(ValueError, match="zero matches"):
+        tools["get_final_chart_numbers"].invoke(
+            {
+                "question_id": report_fixture.platform_col,
+                "intent": "Estou congelando um bucket vazio.",
+                "title": "Platform preference",
+                "chart_slug": "platform-preference-empty",
+                "items": [
+                    {
+                        "label": "Nada",
+                        "rule": f"df[{report_fixture.platform_col!r}] == 'inexistente'",
+                        "reason": "Bucket propositalmente vazio.",
+                    }
+                ],
+            }
+        )
+
+
 def test_benchmark_question_report_returns_cold_and_warm(
     report_fixture: ReportFixture,
 ):
-    app = SurveyApp(
-        report_fixture.df, defaults=_defaults(report_fixture.identity)
-    )
+    app = SurveyApp(report_fixture.df, defaults=_defaults(report_fixture.identity))
 
     calls: list[str] = []
 
@@ -1244,9 +1263,7 @@ def test_benchmark_question_report_returns_cold_and_warm(
 
     app.report_question = fake_report_question  # type: ignore[method-assign]
 
-    result = benchmark_question_report(
-        app, report_fixture.open_text_col, prompt="test"
-    )
+    result = benchmark_question_report(app, report_fixture.open_text_col, prompt="test")
 
     assert isinstance(result, BenchmarkResult)
     assert result.cold.mode == "cold"
@@ -1258,9 +1275,7 @@ def test_benchmark_question_report_returns_cold_and_warm(
 
 
 def test_baseline_question_report_runs_once(report_fixture: ReportFixture):
-    app = SurveyApp(
-        report_fixture.df, defaults=_defaults(report_fixture.identity)
-    )
+    app = SurveyApp(report_fixture.df, defaults=_defaults(report_fixture.identity))
 
     calls: list[str] = []
 
@@ -1275,9 +1290,7 @@ def test_baseline_question_report_runs_once(report_fixture: ReportFixture):
 
     app.report_question = fake_report_question  # type: ignore[method-assign]
 
-    result = baseline_question_report(
-        app, report_fixture.open_text_col, prompt="test"
-    )
+    result = baseline_question_report(app, report_fixture.open_text_col, prompt="test")
 
     assert isinstance(result, BaselineRun)
     assert result.question_column == report_fixture.open_text_col
@@ -1304,9 +1317,7 @@ def test_can_save_and_load_use_case_artifacts(
 def test_can_restore_store_from_artifact_bundle(report_fixture: ReportFixture):
     report = _valid_report(report_fixture)
     store = SurveyArtifactStore(identity=report_fixture.identity)
-    store.ingest_report(
-        report, report_fixture.df, scope=report_fixture.open_text_col
-    )
+    store.ingest_report(report, report_fixture.df, scope=report_fixture.open_text_col)
     bundle = bundle_artifacts(store=store)
 
     restored = SurveyArtifactStore(identity=report_fixture.identity)

@@ -51,9 +51,7 @@ class SurveyToolKit:
 
     def as_tools(self) -> list[StructuredTool]:
         def _json(payload) -> str:
-            return json.dumps(
-                payload, ensure_ascii=False, separators=(",", ":")
-            )
+            return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
         def _normalize_rule(expr: str, question_id: str) -> str:
             stripped = expr.strip()
@@ -97,9 +95,7 @@ class SurveyToolKit:
                         "question_id": question_id,
                     }
                 )
-            chart_slug = normalize_chart_slug(
-                chart_slug
-            ) or normalize_chart_slug(title)
+            chart_slug = normalize_chart_slug(chart_slug) or normalize_chart_slug(title)
             chart_data = []
             datums = []
             for index, item in enumerate(items, start=1):
@@ -120,10 +116,16 @@ class SurveyToolKit:
                 match_mask = base_mask & rule_mask
                 base_count = int(base_mask.sum())
                 match_count = int(match_mask.sum())
+                if base_count <= 0:
+                    raise ValueError(
+                        f"datum {item.label!r} has an empty base set; choose a broader denominator"
+                    )
+                if match_count <= 0:
+                    raise ValueError(
+                        f"datum {item.label!r} has zero matches; choose a broader rule"
+                    )
                 value_pct = (
-                    round(match_count / base_count * 100, 1)
-                    if base_count
-                    else 0.0
+                    round(match_count / base_count * 100, 1) if base_count else 0.0
                 )
                 evidence_id = stable_evidence_id(evidence)
                 chart_data.append(

@@ -254,6 +254,7 @@ Sintetizar os reports validados por pergunta em uma narrativa executiva única.
 Responda em sequência: o que aconteceu, por que aconteceu, o que isso revela sobre
 o comportamento real, e o que muda na decisão da marca.
 Construa sobre os reports anteriores — não recomece do zero.
+Inclua pelo menos 5 charts no report final.
 </missao>\
 """
 
@@ -372,9 +373,7 @@ _CHAT_USER_PROMPT_PREFIX = "Pergunta: {query}\n\nMaterial de trabalho:\n"
 
 
 def question_user_prompt(question_column: str, prompt: str | None) -> str:
-    return prompt or _QUESTION_USER_PROMPT.format(
-        question_column=question_column
-    )
+    return prompt or _QUESTION_USER_PROMPT.format(question_column=question_column)
 
 
 def study_user_prompt(working_material: str, prompt: str | None) -> str:

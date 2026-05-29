@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -51,9 +52,7 @@ class SurveyApp:
         self.language_instruction = language_instruction
         self.context_columns = context_columns
         self.defaults = defaults or SurveyDefaults()
-        self.store = store or SurveyArtifactStore(
-            identity=self.defaults.identity
-        )
+        self.store = store or SurveyArtifactStore(identity=self.defaults.identity)
         self._question_reports: dict[str, Report] = {}
         self._study_report: Report | None = None
 
@@ -72,9 +71,7 @@ class SurveyApp:
             prompt=prompt,
             context_columns=cast(
                 ContextColumns,
-                self.context_columns
-                if context_columns is None
-                else context_columns,
+                self.context_columns if context_columns is None else context_columns,
             ),
             store=self.store,
             model=model or self.defaults.model,
@@ -104,9 +101,7 @@ class SurveyApp:
             prompt=prompt,
             context_columns=cast(
                 ContextColumns,
-                self.context_columns
-                if context_columns is None
-                else context_columns,
+                self.context_columns if context_columns is None else context_columns,
             ),
             store=self.store,
             model=model or self.defaults.model,
@@ -135,14 +130,11 @@ class SurveyApp:
             self.df,
             query,
             thread_id=thread_id,
-            question_reports=question_reports
-            or list(self._question_reports.values()),
+            question_reports=question_reports or list(self._question_reports.values()),
             study_report=study_report or self._study_report,
             context_columns=cast(
                 ContextColumns,
-                self.context_columns
-                if context_columns is None
-                else context_columns,
+                self.context_columns if context_columns is None else context_columns,
             ),
             store=self.store,
             model=model or self.defaults.model,
@@ -175,12 +167,8 @@ def report_question(
     defaults: SurveyDefaults | None = None,
     observers: list[ObserverFn] | None = None,
 ) -> Report:
-    defaults, store = resolve_runtime(
-        defaults, store, model=model, verbose=verbose
-    )
-    scoped_df = select_columns(
-        df, question_column, context_columns, defaults.identity
-    )
+    defaults, store = resolve_runtime(defaults, store, model=model, verbose=verbose)
+    scoped_df = select_columns(df, question_column, context_columns, defaults.identity)
     system_prompt = question_prompt(
         question_column,
         scoped_df.columns.tolist(),
@@ -204,9 +192,7 @@ def report_question(
     )
     if not isinstance(report, Report):
         raise RuntimeError(f"expected Report, got {type(report).__name__}")
-    store.ingest_report(
-        report, scoped_df, scope=question_scope(question_column)
-    )
+    store.ingest_report(report, scoped_df, scope=question_scope(question_column))
     return report
 
 
@@ -226,8 +212,13 @@ def report_study(
     defaults: SurveyDefaults | None = None,
     observers: list[ObserverFn] | None = None,
 ) -> Report:
-    defaults, store = resolve_runtime(
-        defaults, store, model=model, verbose=verbose
+    defaults, store = resolve_runtime(defaults, store, model=model, verbose=verbose)
+    study_defaults = replace(
+        defaults,
+        validation_policy=replace(
+            defaults.validation_policy,
+            min_charts=max(defaults.validation_policy.min_charts, 5),
+        ),
     )
     scoped_df = select_columns(df, None, context_columns, defaults.identity)
     ingest_question_reports(store, scoped_df, question_reports)
@@ -244,7 +235,7 @@ def report_study(
         system_prompt,
         user_prompt,
         store=store,
-        defaults=defaults,
+        defaults=study_defaults,
         model=model,
         verbose=verbose,
         require_publishable_data=True,
@@ -274,9 +265,7 @@ def chat(
     defaults: SurveyDefaults | None = None,
     observers: list[ObserverFn] | None = None,
 ) -> Report | str:
-    defaults, store = resolve_runtime(
-        defaults, store, model=model, verbose=verbose
-    )
+    defaults, store = resolve_runtime(defaults, store, model=model, verbose=verbose)
     scoped_df = select_columns(df, None, context_columns, defaults.identity)
     ingest_question_reports(store, scoped_df, question_reports)
     if study_report is not None:
